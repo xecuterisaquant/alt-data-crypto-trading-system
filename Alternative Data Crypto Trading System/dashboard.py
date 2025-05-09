@@ -8,14 +8,21 @@ st.set_page_config(page_title="Strategy Dashboard", layout="wide")
 btc_df = pd.read_csv("Model Output/BTC_Strategy_Output.csv", parse_dates=['Datetime'])
 eth_df = pd.read_csv("Model Output/ETH_Strategy_Output.csv", parse_dates=['Datetime'])
 
+# Clean and sort
+for df in [btc_df, eth_df]:
+    df.sort_values("Datetime", inplace=True)
+    df.drop_duplicates(subset="Datetime", inplace=True)
+    df['Price'] = df['Price'].fillna(method='ffill')
+    df['Portfolio_Value'] = df['Portfolio_Value'].fillna(method='ffill')
+    df['Portfolio_Value'] = df['Portfolio_Value'].fillna(method='bfill')
+
 # Sidebar
 st.sidebar.header("⚙️ Dashboard Controls")
 asset = st.sidebar.selectbox("Select Asset", ['BTC', 'ETH'])
 show_drawdown = st.sidebar.checkbox("Show Drawdown Curve", value=True)
 
-# Select data
+# Use selected asset
 df = btc_df if asset == 'BTC' else eth_df
-df = df.sort_values("Datetime").drop_duplicates(subset="Datetime")
 df['Position'] = df['Position'].fillna(0)
 buy_hold = 100000 * (df['Price'] / df['Price'].iloc[0])
 
@@ -31,56 +38,37 @@ exit_short = df[(df['Position'].shift(1) == -1) & (df['Position'] == 0)]
 
 fig1 = go.Figure()
 
-# Price line
-fig1.add_trace(go.Scatter(
-    x=df['Datetime'], y=df['Price'], mode='lines', name='Price',
-    line=dict(color='gray')
-))
+fig1.add_trace(go.Scatter(x=df['Datetime'], y=df['Price'], mode='lines', name='Price', line=dict(color='gray')))
 
-# Entry/Exit markers
 fig1.add_trace(go.Scatter(
-    x=entry_long['Datetime'], y=entry_long['Price'],
-    mode='markers', name='Entry (Long)',
-    marker=dict(color='green', symbol='triangle-up', size=10),
+    x=entry_long['Datetime'], y=entry_long['Price'], mode='markers',
+    name='Entry (Long)', marker=dict(color='green', symbol='triangle-up', size=10),
     hovertemplate='Entry (Long)<br>%{x}<br>$%{y:.2f}'
 ))
-
 fig1.add_trace(go.Scatter(
-    x=entry_short['Datetime'], y=entry_short['Price'],
-    mode='markers', name='Entry (Short)',
-    marker=dict(color='purple', symbol='triangle-down', size=10),
+    x=entry_short['Datetime'], y=entry_short['Price'], mode='markers',
+    name='Entry (Short)', marker=dict(color='purple', symbol='triangle-down', size=10),
     hovertemplate='Entry (Short)<br>%{x}<br>$%{y:.2f}'
 ))
-
 fig1.add_trace(go.Scatter(
-    x=exit_long['Datetime'], y=exit_long['Price'],
-    mode='markers', name='Exit (Long)',
-    marker=dict(color='orange', symbol='x', size=10),
+    x=exit_long['Datetime'], y=exit_long['Price'], mode='markers',
+    name='Exit (Long)', marker=dict(color='orange', symbol='x', size=10),
     hovertemplate='Exit (Long)<br>%{x}<br>$%{y:.2f}'
 ))
-
 fig1.add_trace(go.Scatter(
-    x=exit_short['Datetime'], y=exit_short['Price'],
-    mode='markers', name='Exit (Short)',
-    marker=dict(color='red', symbol='x', size=10),
+    x=exit_short['Datetime'], y=exit_short['Price'], mode='markers',
+    name='Exit (Short)', marker=dict(color='red', symbol='x', size=10),
     hovertemplate='Exit (Short)<br>%{x}<br>$%{y:.2f}'
 ))
 
-# Optional drawdown curve
 if show_drawdown:
     drawdown = (df['Portfolio_Value'] / df['Portfolio_Value'].cummax()) - 1
     fig1.add_trace(go.Scatter(
-        x=df['Datetime'], y=drawdown,
-        name='Drawdown', mode='lines',
-        line=dict(color='orange', dash='dot'),
-        yaxis='y2'
+        x=df['Datetime'], y=drawdown, mode='lines', name='Drawdown',
+        line=dict(color='orange', dash='dot'), yaxis='y2'
     ))
     fig1.update_layout(yaxis2=dict(
-        title="Drawdown",
-        overlaying='y',
-        side='right',
-        showgrid=False,
-        range=[-1, 0]
+        title="Drawdown", overlaying='y', side='right', showgrid=False, range=[-1, 0]
     ))
 
 fig1.update_layout(title=f"{asset} Price with Entry/Exit Signals", xaxis_title="Date", yaxis_title="Price")
@@ -97,12 +85,10 @@ fig2.add_trace(go.Scatter(x=df['Datetime'], y=buy_hold, mode='lines', name='Buy 
 fig2.update_layout(title=f"{asset} Portfolio Value vs Buy & Hold", xaxis_title="Date", yaxis_title="Portfolio Value ($)")
 st.plotly_chart(fig2, use_container_width=True)
 
-# Performance metrics
 final_val = df['Portfolio_Value'].iloc[-1]
 buy_hold_val = buy_hold.iloc[-1]
 sharpe = df['Daily_Return'].mean() / df['Daily_Return'].std() * (252**0.5)
-drawdown_val = (df['Portfolio_Value'] / df['Portfolio_Value'].cummax()) - 1
-max_dd = drawdown_val.min()
+max_dd = ((df['Portfolio_Value'] / df['Portfolio_Value'].cummax()) - 1).min()
 
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("💰 Final Value", f"${final_val:,.2f}")
